@@ -1,0 +1,104 @@
+﻿using System;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace ImprovedPrimes
+{
+    public partial class Form1 : Form
+    {
+        private Task _mainTask;
+        private BlockingCollection<int> _primes = new BlockingCollection<int> {2, 3, 5, 7};
+        private CancellationToken _token;
+        private CancellationTokenSource _tokenSource;
+
+        public Form1()
+        {
+            InitializeComponent();
+        }
+
+        private void btnStart_Click(object sender, EventArgs e)
+        {
+            _results.Items.Clear();
+
+            _primes = new BlockingCollection<int> {2, 3, 5, 7};
+            _tokenSource = new CancellationTokenSource();
+            _token = _tokenSource.Token;
+            _mainTask = new Task(mainTask, _token);
+            _mainTask.Start();
+            statusStrip1.Items[0].Text = "Scan started.";
+        }
+
+        private void btnStop_Click(object sender, EventArgs e)
+        {
+            if (_token.CanBeCanceled) _tokenSource.Cancel();
+            statusStrip1.Items[0].Text = "Scan cancelled.";
+        }
+
+        private void mainTask()
+        {
+            var sw = new Stopwatch();
+            sw.Start();
+
+            int threadCount = Convert.ToInt32(bxThreads.Text);
+
+            var subTasks = new Task[threadCount];
+
+            int max = Convert.ToInt32(bxHowMany.Text);
+            int current = threadCount;
+
+            for (int i = 0; i < threadCount; i++, current++)
+            {
+                int c1 = current;
+                subTasks[i] = new Task(() => { if (IsPrime(c1)) AddToPrimesList(c1); });
+                subTasks[i].Start();
+            }
+
+            while (current < max && !_token.IsCancellationRequested)
+            {
+                int t = Task.WaitAny(subTasks);
+                int c = current;
+
+                subTasks[t].Dispose();
+                subTasks[t] = new Task(() => { if (IsPrime(c)) AddToPrimesList(c); });
+                subTasks[t].Start();
+
+                current++;
+            }
+            Task.WaitAll(subTasks);
+
+            ShowPrimes();
+            sw.Stop();
+            statusStrip1.Invoke(
+                (MethodInvoker)
+                    (() =>
+                    {
+                        statusStrip1.Items[0].Text = String.Format("Found {0:N0} primes in {1:N0} s.", _primes.Count,
+                            sw.ElapsedMilliseconds/1000);
+                    }));
+        }
+
+        private void ShowPrimes()
+        {
+            var disp = _primes.ToList();
+            disp.Sort();
+
+            var res = disp.Select(x => new ListViewItem(x.ToString())).ToArray();
+
+            _results.Invoke((MethodInvoker) (() => { _results.Items.AddRange(res); }));
+        }
+
+        private bool IsPrime(int val)
+        {
+            return _primes.All(p => (val%p != 0));
+        }
+
+        private void AddToPrimesList(int val)
+        {
+            _primes.Add(val);
+        }
+    }
+}

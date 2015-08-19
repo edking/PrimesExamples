@@ -1,0 +1,41 @@
+A set of perfview labs with the ConcurrentPrimes projects.
+
+SETUP: These 4 processes calculate prime numbers less than a given number.  They use a variety of 
+       methods to deal with coordinating tasks to run this in parallel.
+
+1) ConcurrentPrimes
+   Maintains a list of primes we've found already.  Only checks for divisibility against things already
+   on the list.  Uses lock() to lock the primes list when reading/writing.
+
+   Run this with perfview.  You'll see it takes on the order of 120s to complete the job, 80% of which
+   is being spent waiting on the lock.
+
+2) ImprovedPrimes
+   Same design as #1.  Except this time, it uses BlockingCollection instead of a list.  Let the
+   BlockingCollection class manage the locks for us.
+
+   Notice that the time to run with the same parameters is reduced to about 50s.  Under half of the original.   
+   Use perfview to tell where the time is being spent now.  Now, time is being spent in actually checking the 
+   primes.  (The Enumerable.All step.)  If this weren't class, we'd probably stop here.
+
+3) PipelinedPrimes
+   Maintains a queue of things to be checked and uses the BlockingCollection class to handle this.  Rather
+   than constantly creating and destroying Task objects, we create N Tasks at the beginning and feed inputs
+   to the tasks.  One BlockingCollection sends data to the tasks, another holds their output.
+
+   Look!  We're using a standard design pattern!  Not too bad, all in all.  We're down to 41s now.  And, 
+   most of that time is being spent actually doing the checks for whether this is prime or not.  This looks
+   like a pretty solid solution.
+
+   All things considered, this is pretty much the end of the line for this algorithm.  There are some minor
+   tweaks that could be done.  But, when all is said and done, the vast majority of the time is being spent
+   in the bit of code that we expect and that we'd want it to be in.  To improve beyond here, we need something
+   a bit more extreme.
+
+4) PLINQPrimes
+   Now, let's go really crazy.  Forget about checking against only primes.  Do this whole thing in one
+   big PLINQ statement.  We'll limit the degree of parallelism to be fair.  But, this design will be doing
+   a lot more divisions.
+
+   How long does this one run? (5s)  Where is the time being spent? There's the punch line.  This version
+   spends most of that 5s adding the primes to the ListView for display on screen.
